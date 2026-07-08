@@ -1,0 +1,15 @@
+{
+  "name": "mpesa-stk-push",
+  "version": "1.0.0",
+  "description": "Trigger an M-Pesa STK Push (Lipa Na M-Pesa Online) to collect payment from a customer via Safaricom's Daraja API",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5"
+  }
+}

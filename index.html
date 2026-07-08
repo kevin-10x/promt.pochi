@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Collect Payment</title>
+<style>
+  :root {
+    --ink: #1a2e22;
+    --paper: #f7f5f0;
+    --green: #0a6b3d;
+    --green-dark: #084d2c;
+    --line: #d8d3c6;
+    --error: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--paper);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 380px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 32px 28px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #6b6558;
+    margin: 0 0 24px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 15px;
+    background: var(--paper);
+  }
+  input:focus {
+    outline: 2px solid var(--green);
+    outline-offset: 1px;
+  }
+  button {
+    width: 100%;
+    margin-top: 24px;
+    padding: 13px;
+    border: none;
+    border-radius: 8px;
+    background: var(--green);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: var(--green-dark); }
+  button:disabled { background: #a9b8ae; cursor: not-allowed; }
+  .status {
+    margin-top: 20px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.pending { background: #fff6e0; color: #7a5c00; }
+  .status.success { background: #e4f5eb; color: var(--green-dark); }
+  .status.error { background: #fbe9e7; color: var(--error); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Collect payment</h1>
+    <p class="subtitle">Enter the customer's number to send them a PIN prompt.</p>
+
+    <form id="payForm">
+      <label for="phone">Customer's M-Pesa number</label>
+      <input type="tel" id="phone" placeholder="07XX XXX XXX" required />
+
+      <label for="amount">Amount (KES)</label>
+      <input type="number" id="amount" min="1" step="1" placeholder="e.g. 500" required />
+
+      <button type="submit" id="submitBtn">Send payment prompt</button>
+    </form>
+
+    <div class="status" id="status"></div>
+  </div>
+
+<script>
+  const form = document.getElementById('payForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusEl = document.getElementById('status');
+  let pollTimer = null;
+
+  function setStatus(kind, message) {
+    statusEl.className = `status show ${kind}`;
+    statusEl.textContent = message;
+  }
+
+  async function pollStatus(checkoutRequestId, attempts = 0) {
+    if (attempts > 20) {
+      setStatus('error', 'No confirmation received yet. Check your till statement.');
+      submitBtn.disabled = false;
+      return;
+    }
+    try {
+      const res = await fetch(`/api/mpesa/status/${checkoutRequestId}`);
+      const data = await res.json();
+
+      if (data.status === 'success') {
+        setStatus('success', `Payment received: KES ${data.amountPaid} (Receipt: ${data.mpesaReceiptNumber})`);
+        submitBtn.disabled = false;
+        return;
+      }
+      if (data.status === 'failed') {
+        setStatus('error', `Payment not completed: ${data.resultDesc || 'Cancelled or timed out'}`);
+        submitBtn.disabled = false;
+        return;
+      }
+      // still pending - poll again
+      pollTimer = setTimeout(() => pollStatus(checkoutRequestId, attempts + 1), 3000);
+    } catch (err) {
+      setStatus('error', 'Could not check payment status.');
+      submitBtn.disabled = false;
+    }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearTimeout(pollTimer);
+
+    const phoneNumber = document.getElementById('phone').value;
+    const amount = document.getElementById('amount').value;
+
+    submitBtn.disabled = true;
+    setStatus('pending', 'Sending payment prompt to customer...');
+
+    try {
+      const res = await fetch('/api/mpesa/stkpush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, amount }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setStatus('error', data.error || 'Failed to send prompt');
+        submitBtn.disabled = false;
+        return;
+      }
+
+      setStatus('pending', 'Prompt sent. Waiting for customer to enter their PIN...');
+      pollStatus(data.checkoutRequestId);
+    } catch (err) {
+      setStatus('error', 'Network error. Please try again.');
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

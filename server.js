@@ -128,9 +128,11 @@ app.post('/api/mpesa/stkpush', async (req, res) => {
       checkoutRequestId: data.CheckoutRequestID,
     });
   } catch (err) {
-    console.error('STK push error:', err.response?.data || err.message);
-    res.status(500).json({
-      error: err.response?.data?.errorMessage || err.message || 'Failed to initiate STK push',
+    const detail = err.response?.data || err.message;
+    console.error('STK push error:', detail);
+    res.status(err.response?.status || 500).json({
+      error: err.response?.data?.errorMessage || err.response?.data?.error_description || err.message || 'Failed to initiate STK push',
+      detail: err.response?.data || undefined,
     });
   }
 });
